@@ -15,7 +15,9 @@ namespace ApiPlatform\Symfony\Doctrine\EventListener;
 
 use ApiPlatform\Doctrine\Common\Messenger\DispatchTrait;
 use ApiPlatform\GraphQl\Subscription\MercureSubscriptionIriGeneratorInterface as GraphQlMercureSubscriptionIriGeneratorInterface;
+use ApiPlatform\GraphQl\Subscription\MercureSubscriptionPayloadsBag;
 use ApiPlatform\GraphQl\Subscription\SubscriptionManagerInterface as GraphQlSubscriptionManagerInterface;
+use ApiPlatform\GraphQl\Subscription\SubscriptionPayloadBag;
 use ApiPlatform\Metadata\Exception\InvalidArgumentException;
 use ApiPlatform\Metadata\Exception\OperationNotFoundException;
 use ApiPlatform\Metadata\Exception\RuntimeException;
@@ -31,7 +33,6 @@ use Doctrine\ODM\MongoDB\Event\OnFlushEventArgs as MongoDbOdmOnFlushEventArgs;
 use Doctrine\ORM\Event\OnFlushEventArgs as OrmOnFlushEventArgs;
 use Symfony\Component\ExpressionLanguage\ExpressionFunction;
 use Symfony\Component\ExpressionLanguage\ExpressionLanguage;
-use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\Mercure\HubRegistry;
 use Symfony\Component\Mercure\Update;
 use Symfony\Component\Messenger\MessageBusInterface;
@@ -50,6 +51,7 @@ final class PublishMercureUpdatesListener
         'topics' => true,
         'data' => true,
         'private' => true,
+        'private_fields' => true,
         'id' => true,
         'type' => true,
         'retry' => true,
@@ -65,7 +67,7 @@ final class PublishMercureUpdatesListener
     /**
      * @param array<string, string[]|string> $formats
      */
-    public function __construct(ResourceClassResolverInterface $resourceClassResolver, private readonly IriConverterInterface $iriConverter, ResourceMetadataCollectionFactoryInterface $resourceMetadataFactory, private readonly SerializerInterface $serializer, private readonly array $formats, ?MessageBusInterface $messageBus = null, private readonly ?HubRegistry $hubRegistry = null, private readonly ?GraphQlSubscriptionManagerInterface $graphQlSubscriptionManager = null, private readonly ?GraphQlMercureSubscriptionIriGeneratorInterface $graphQlMercureSubscriptionIriGenerator = null, ?ExpressionLanguage $expressionLanguage = null, private bool $includeType = false)
+    public function __construct(ResourceClassResolverInterface $resourceClassResolver, private readonly IriConverterInterface $iriConverter, ResourceMetadataCollectionFactoryInterface $resourceMetadataFactory, private readonly SerializerInterface $serializer, private readonly array $formats, private readonly MercureSubscriptionPayloadsBag $mercureSubscriptionPayloadsBag, ?MessageBusInterface $messageBus = null, private readonly ?HubRegistry $hubRegistry = null, private readonly ?GraphQlSubscriptionManagerInterface $graphQlSubscriptionManager = null, private readonly ?GraphQlMercureSubscriptionIriGeneratorInterface $graphQlMercureSubscriptionIriGenerator = null, ?ExpressionLanguage $expressionLanguage = null, private bool $includeType = false)
     {
         if (null === $messageBus && null === $hubRegistry) {
             throw new InvalidArgumentException('A message bus or a hub registry must be provided.');
@@ -236,16 +238,14 @@ final class PublishMercureUpdatesListener
             $data = $options['data'] ?? $this->serializer->serialize($object, key($this->formats), $context);
         }
 
-        $updates = array_merge([$this->buildUpdate($iri, $data, $options)], $this->getGraphQlSubscriptionUpdates($object, $options, $type));
-
-        foreach ($updates as $update) {
-            if ($options['enable_async_update'] && $this->messageBus) {
-                $this->dispatch($update);
-                continue;
-            }
-
+        $update = $this->buildUpdate($iri, $data, $options);
+        if ($options['enable_async_update'] && $this->messageBus) {
+            $this->dispatch($update);
+        } else {
             $this->hubRegistry->getHub($options['hub'] ?? null)->publish($update);
         }
+
+        $this->prepareGraphqlMercureUpdates($object, $options);
     }
 
     private function evaluateTopics(array &$options, object $object): void
@@ -276,27 +276,13 @@ final class PublishMercureUpdatesListener
         $options['topics'] = $topics;
     }
 
-    /**
-     * @return Update[]
-     */
-    private function getGraphQlSubscriptionUpdates(object $object, array $options, string $type): array
+    private function prepareGraphqlMercureUpdates(object $object, array $options): void
     {
-        if ('update' !== $type || !$this->graphQlSubscriptionManager || !$this->graphQlMercureSubscriptionIriGenerator) {
-            return [];
+        if (!$this->graphQlSubscriptionManager || !$this->graphQlMercureSubscriptionIriGenerator) {
+            return ;
         }
 
-        $payloads = $this->graphQlSubscriptionManager->getPushPayloads($object);
-
-        $updates = [];
-        foreach ($payloads as [$subscriptionId, $data]) {
-            $updates[] = $this->buildUpdate(
-                $this->graphQlMercureSubscriptionIriGenerator->generateTopicIri($subscriptionId),
-                (string) (new JsonResponse($data))->getContent(),
-                $options
-            );
-        }
-
-        return $updates;
+        $this->mercureSubscriptionPayloadsBag->addPayload(new SubscriptionPayloadBag($object, $options));
     }
 
     /**

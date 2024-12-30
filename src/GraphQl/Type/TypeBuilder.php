@@ -203,7 +203,6 @@ final class TypeBuilder implements ContextAwareTypeBuilderInterface
 
         /** @var FieldsBuilderEnumInterface $fieldsBuilder */
         $fieldsBuilder = $this->fieldsBuilderLocator->get('api_platform.graphql.fields_builder');
-        $enumCases = [];
         $enumCases = $fieldsBuilder->getEnumFields($operation->getClass());
 
         $enumConfig = [
@@ -357,6 +356,7 @@ final class TypeBuilder implements ContextAwareTypeBuilderInterface
                         $fields['clientSubscriptionId'] = GraphQLType::string();
                         if ($operation->getMercure()) {
                             $fields['mercureUrl'] = GraphQLType::string();
+                            $fields['operationType'] = GraphQLType::string();
                         }
 
                         return $fields;

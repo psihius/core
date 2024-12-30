@@ -46,9 +46,10 @@ final class SubscriptionProcessor implements ProcessorInterface
             if (!$this->mercureSubscriptionIriGenerator) {
                 throw new \LogicException('Cannot use Mercure for subscriptions when MercureBundle is not installed. Try running "composer require mercure".');
             }
-
+            $this->subscriptionManager->pushPayloadsToMercure();
             $hub = \is_array($mercure) ? ($mercure['hub'] ?? null) : null;
             $data['mercureUrl'] = $this->mercureSubscriptionIriGenerator->generateMercureUrl($subscriptionId, $hub);
+            $data['operationType'] = $operation->getShortName();
         }
 
         return $data;

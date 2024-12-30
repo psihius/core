@@ -228,7 +228,13 @@
             <argument type="service" id="api_platform.graphql.state_processor.normalize" on-invalid="ignore" />
             <argument type="service" id="api_platform.symfony.iri_converter" />
             <argument type="service" id="api_platform.metadata.resource.metadata_collection_factory" />
+            <argument type="service" id="api_platform.graphql.subscription.mercure_payload_bag" />
+            <argument type="service" id="api_platform.graphql.subscription.mercure_iri_generator" on-invalid="ignore" />
+            <argument type="service" id="Symfony\Component\Mercure\HubRegistry" />
+            <argument type="service" id="messenger.default_bus" on-invalid="ignore" />
         </service>
+
+        <service id="api_platform.graphql.subscription.mercure_payload_bag" class="ApiPlatform\GraphQl\Subscription\MercureSubscriptionPayloadsBag" />
 
         <!-- Serializer -->
 
@@ -249,5 +255,6 @@
         <service id="api_platform.graphql.normalizer.runtime_exception" class="ApiPlatform\GraphQl\Serializer\Exception\RuntimeExceptionNormalizer">
             <tag name="serializer.normalizer" priority="-780" />
         </service>
+
     </services>
 </container>
